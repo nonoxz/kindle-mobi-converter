@@ -22,7 +22,11 @@ Built by [nonoxz](https://github.com/nonoxz).
 - Calibre installed on the machine running the server
 - `ebook-convert` available in `PATH`
 
-On Ubuntu/Debian:
+## Install Requirements by Operating System
+
+### Linux Ubuntu/Debian
+
+Install Node.js from your distribution packages, NodeSource, `nvm`, or another trusted source. Then install Calibre:
 
 ```bash
 sudo apt update
@@ -34,6 +38,63 @@ Check the converter:
 ```bash
 ebook-convert --version
 ```
+
+### macOS
+
+Install Node.js from <https://nodejs.org/> or with Homebrew:
+
+```bash
+brew install node
+```
+
+Install Calibre from <https://calibre-ebook.com/download_osx> or with Homebrew Cask:
+
+```bash
+brew install --cask calibre
+```
+
+If `ebook-convert` is not found after installing Calibre, add Calibre's command-line tools to your shell path:
+
+```bash
+export PATH="/Applications/calibre.app/Contents/MacOS:$PATH"
+```
+
+To make that permanent for Zsh:
+
+```bash
+echo 'export PATH="/Applications/calibre.app/Contents/MacOS:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Check the converter:
+
+```bash
+ebook-convert --version
+```
+
+### Windows
+
+Install Node.js from <https://nodejs.org/>. During installation, keep the option that adds Node.js to `PATH` enabled.
+
+Install Calibre from <https://calibre-ebook.com/download_windows>. After installation, `ebook-convert.exe` is usually located at:
+
+```text
+C:\Program Files\Calibre2\ebook-convert.exe
+```
+
+Add Calibre to your Windows `Path` environment variable:
+
+```text
+C:\Program Files\Calibre2
+```
+
+Then open a new PowerShell window and verify:
+
+```powershell
+ebook-convert --version
+```
+
+If PowerShell still does not find it, run the app from a terminal where Calibre is available or restart Windows after updating `Path`.
 
 ## Local Usage
 
