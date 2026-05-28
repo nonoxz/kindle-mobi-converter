@@ -40,6 +40,15 @@
           </div>
         </div>
 
+        <details id="processDetails" class="process-details">
+          <summary>Show process details</summary>
+          <div class="process-toolbar">
+            <span>Conversion log</span>
+            <button id="clearLogButton" type="button" class="log-clear-button">Clear log</button>
+          </div>
+          <pre id="processLog" class="process-log" aria-live="polite"></pre>
+        </details>
+
         <div id="status" class="status" aria-live="polite"></div>
 
         <section id="resultsPanel" class="results-panel" hidden>

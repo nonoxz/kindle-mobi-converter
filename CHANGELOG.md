@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-05-28
+
+### Added
+
+- Collapsible process details panel below the progress bar.
+- Browser-side conversion log with upload progress, server response, converted files, failures and Calibre logs.
+- Clear log control for the process details panel.
+
 ## [0.2.0] - 2026-05-28
 
 ### Added

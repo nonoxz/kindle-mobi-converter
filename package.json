@@ -1,6 +1,6 @@
 {
   "name": "kindle-mobi-converter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Web app to convert PDF, EPUB and other ebook formats to MOBI using Calibre.",
   "type": "module",
   "main": "src/server.js",

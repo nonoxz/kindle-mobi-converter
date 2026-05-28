@@ -9,6 +9,9 @@ const progressWrap = document.querySelector('#progressWrap');
 const progressLabel = document.querySelector('#progressLabel');
 const progressPercent = document.querySelector('#progressPercent');
 const progressBar = document.querySelector('#progressBar');
+const processDetails = document.querySelector('#processDetails');
+const processLog = document.querySelector('#processLog');
+const clearLogButton = document.querySelector('#clearLogButton');
 const resultsPanel = document.querySelector('#resultsPanel');
 const resultsSummary = document.querySelector('#resultsSummary');
 const resultsList = document.querySelector('#resultsList');
@@ -21,6 +24,13 @@ fileInput.addEventListener('change', () => {
   resetProgress();
   setStatus('', '');
   clearResults();
+  resetLog();
+  if (files.length > 0) {
+    appendLog(`Selected ${files.length} file${files.length === 1 ? '' : 's'} (${formatBytes(totalSize(files))} total).`);
+    for (const file of files) {
+      appendLog(`- ${file.name} (${formatBytes(file.size)})`);
+    }
+  }
 });
 
 clearButton.addEventListener('click', () => {
@@ -29,6 +39,11 @@ clearButton.addEventListener('click', () => {
   resetProgress();
   setStatus('', '');
   clearResults();
+  resetLog();
+});
+
+clearLogButton.addEventListener('click', () => {
+  resetLog();
 });
 
 form.addEventListener('submit', event => {
@@ -37,6 +52,7 @@ form.addEventListener('submit', event => {
 
   if (files.length === 0) {
     setStatus('Choose at least one file before converting.', 'error');
+    appendLog('Conversion blocked: no files selected.', 'error');
     return;
   }
 
@@ -50,38 +66,49 @@ function convertFiles(files) {
   setProgress(0, 'Preparing files...');
   setStatus(`Converting ${files.length} file${files.length === 1 ? '' : 's'}. Keep this window open.`, '');
   clearResults();
+  resetLog();
+  appendLog(`Starting batch conversion for ${files.length} file${files.length === 1 ? '' : 's'}.`);
+  appendLog(`Total upload size: ${formatBytes(totalSize(files))}.`);
 
   const data = new FormData();
   for (const file of files) {
     data.append('file', file);
+    appendLog(`Queued: ${file.name} (${formatBytes(file.size)}).`);
   }
 
   const request = new XMLHttpRequest();
   request.open('POST', '/api/convert');
   request.responseType = 'json';
   request.timeout = Math.max(240000, files.length * 180000 + 60000);
+  appendLog(`Request timeout set to ${Math.round(request.timeout / 1000)} seconds.`);
 
   request.upload.addEventListener('progress', event => {
     if (!event.lengthComputable) {
       setProgress(12, 'Uploading files...');
+      appendLog('Uploading files. Total upload size is not available from the browser.');
       return;
     }
 
     const uploadPercent = Math.round((event.loaded / event.total) * 55);
     setProgress(Math.max(4, uploadPercent), 'Uploading files...');
+    appendLogOnce('upload-started', 'Upload started.');
+    updateLastUploadLog(event.loaded, event.total);
   });
 
   request.addEventListener('loadstart', () => {
     setProgress(3, 'Starting batch conversion...');
+    appendLog('HTTP request opened. Sending files to the server.');
   });
 
   request.upload.addEventListener('load', () => {
     setProgress(65, 'Files received. Calibre is converting them one by one...');
     progressBar.classList.add('is-working');
+    appendLog('Upload completed. Server is running Calibre conversions sequentially.');
   });
 
   request.addEventListener('load', () => {
     const payload = request.response;
+    appendLog(`Server responded with HTTP ${request.status}.`);
 
     if (request.status < 200 || request.status >= 300) {
       const message = payload?.error || `Conversion failed with HTTP status ${request.status}.`;
@@ -96,7 +123,9 @@ function convertFiles(files) {
 
     setProgress(100, 'Batch conversion finished.');
     renderResults(payload);
+    appendServerDetails(payload);
     setStatus(`Converted ${payload.files.length} of ${files.length} file${files.length === 1 ? '' : 's'}.`, payload.failures?.length ? 'warning' : 'success');
+    appendLog('Batch conversion finished.');
     button.disabled = false;
     clearButton.disabled = false;
   });
@@ -125,8 +154,10 @@ async function loadHealth() {
     health.textContent = payload.converterAvailable
       ? 'Calibre is available. The server can convert files.'
       : 'Calibre is not available. Install Calibre to enable real conversions.';
+    appendLog(`Health check: converterAvailable=${payload.converterAvailable}.`);
   } catch {
     health.textContent = 'Could not check converter status.';
+    appendLog('Health check failed. The server may be offline.', 'error');
   }
 }
 
@@ -201,6 +232,23 @@ function createResultItem(file) {
   return item;
 }
 
+function appendServerDetails(payload) {
+  for (const file of payload.files || []) {
+    appendLog(`Converted: ${file.originalName} -> ${file.filename} (${formatBytes(file.size)}).`, 'success');
+    if (file.log) {
+      appendLog(`Calibre log for ${file.originalName}:\n${file.log}`);
+    }
+  }
+
+  if (payload.zip) {
+    appendLog(`ZIP ready: ${payload.zip.filename} (${formatBytes(payload.zip.size)}).`, 'success');
+  }
+
+  for (const failure of payload.failures || []) {
+    appendLog(`Failed: ${failure.originalName}: ${failure.error}`, 'error');
+  }
+}
+
 function buildDownloadUrl(downloadUrl, name) {
   const safeName = normalizeMobiName(name);
   return `${downloadUrl}?name=${encodeURIComponent(safeName)}`;
@@ -221,8 +269,10 @@ function finishWithError(message, payload = null) {
   progressBar.classList.remove('is-working');
   setProgress(100, 'Conversion stopped.');
   setStatus(message, 'error');
+  appendLog(message, 'error');
   if (payload?.failures?.length) {
     renderResults({ files: payload.files || [], failures: payload.failures, zip: null });
+    appendServerDetails(payload);
   }
   button.disabled = false;
   clearButton.disabled = false;
@@ -257,16 +307,49 @@ function clearResults() {
   zipDownload.hidden = true;
 }
 
+function resetLog() {
+  processLog.textContent = '';
+  loggedOnce.clear();
+  lastUploadLog = '';
+}
+
+function appendLog(message, type = 'info') {
+  const now = new Date().toLocaleTimeString();
+  const prefix = type === 'error' ? 'ERROR' : type === 'success' ? 'OK' : 'INFO';
+  processLog.textContent += `[${now}] [${prefix}] ${message}\n`;
+  processLog.scrollTop = processLog.scrollHeight;
+}
+
+const loggedOnce = new Set();
+let lastUploadLog = '';
+
+function appendLogOnce(key, message) {
+  if (loggedOnce.has(key)) return;
+  loggedOnce.add(key);
+  appendLog(message);
+}
+
+function updateLastUploadLog(loaded, total) {
+  const percent = Math.round((loaded / total) * 100);
+  const next = `Upload progress: ${percent}% (${formatBytes(loaded)} of ${formatBytes(total)}).`;
+  if (next === lastUploadLog) return;
+  lastUploadLog = next;
+  appendLog(next);
+}
+
 function getSelectedFiles() {
   return Array.from(fileInput.files || []);
+}
+
+function totalSize(files) {
+  return files.reduce((sum, file) => sum + file.size, 0);
 }
 
 function formatSelection(files) {
   if (files.length === 0) return 'Default maximum upload size: 80 MB total';
   if (files.length === 1) return `${files[0].name} (${formatBytes(files[0].size)})`;
 
-  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-  return `${files.length} files selected (${formatBytes(totalSize)} total)`;
+  return `${files.length} files selected (${formatBytes(totalSize(files))} total)`;
 }
 
 function formatBytes(bytes) {
@@ -283,4 +366,5 @@ function formatBytes(bytes) {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }
 
+appendLog('Interface loaded. Waiting for files.');
 loadHealth();

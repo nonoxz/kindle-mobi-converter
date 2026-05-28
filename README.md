@@ -14,6 +14,7 @@ Built by [nonoxz](https://github.com/nonoxz).
 - Review converted files in a results list.
 - Rename each MOBI file before downloading it.
 - Browser-based upload flow with progress feedback.
+- Collapsible process details panel with conversion logs.
 - Manual download links for each converted file.
 - Backend powered by Node.js and Calibre's `ebook-convert`.
 - No npm runtime dependencies.
