@@ -9,9 +9,12 @@ Built by [nonoxz](https://github.com/nonoxz).
 ## Features
 
 - Convert `EPUB`, `PDF`, `DOCX`, `TXT`, `HTML`, `RTF` and `AZW3` files to `MOBI`.
+- Convert one file or many files in the same batch.
+- Download all converted files as a ZIP archive.
+- Review converted files in a results list.
+- Rename each MOBI file before downloading it.
 - Browser-based upload flow with progress feedback.
-- Automatic download when the conversion is complete.
-- Manual download link as a fallback.
+- Manual download links for each converted file.
 - Backend powered by Node.js and Calibre's `ebook-convert`.
 - No npm runtime dependencies.
 - Dockerfile included for Linux deployments.
@@ -114,11 +117,12 @@ http://localhost:3000
 
 Then:
 
-1. Choose an ebook or document file.
+1. Choose one or more ebook/document files.
 2. Click **Convert to MOBI**.
-3. Wait for the upload and conversion progress to finish.
-4. The MOBI file should download automatically.
-5. If the browser blocks automatic download, use the manual download link shown on screen.
+3. Wait for the upload and batch conversion progress to finish.
+4. Review the converted files list.
+5. Optionally edit the download name for each MOBI file.
+6. Download files one by one, or use **Download ZIP** when multiple files were converted.
 
 ## Configuration
 
@@ -167,6 +171,10 @@ This first version is suitable for personal or internal use. Before exposing it 
 - antivirus scanning or file sandboxing
 - scheduled cleanup policies
 - external object storage for generated files
+
+## Changelog
+
+Release notes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

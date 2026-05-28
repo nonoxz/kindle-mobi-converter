@@ -9,6 +9,7 @@
   --accent-strong: #0b4f6c;
   --danger: #b42318;
   --success: #166534;
+  --warning: #92400e;
 }
 
 * { box-sizing: border-box; }
@@ -22,7 +23,7 @@ body {
 }
 
 .shell {
-  width: min(980px, calc(100% - 32px));
+  width: min(1040px, calc(100% - 32px));
   margin: 0 auto;
   padding: 52px 0;
 }
@@ -52,9 +53,10 @@ body {
   color: #fff;
   font-weight: 800;
   font-size: 28px;
+  flex: 0 0 auto;
 }
 
-h1, h2, p { margin: 0; }
+h1, h2, h3, p { margin: 0; }
 
 h1 {
   font-size: clamp(28px, 4vw, 42px);
@@ -62,7 +64,7 @@ h1 {
   letter-spacing: 0;
 }
 
-.brand p, .details p, .status {
+.brand p, .details p, .status, .results-head p, .result-info p, .failures-list p {
   color: var(--muted);
   line-height: 1.55;
 }
@@ -110,8 +112,16 @@ h1 {
   color: var(--muted);
 }
 
-button {
-  justify-self: start;
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button, .download-button, .download-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 46px;
   padding: 0 20px;
   border: 0;
@@ -120,7 +130,13 @@ button {
   color: #fff;
   font-weight: 750;
   font-size: 15px;
+  text-decoration: none;
   cursor: pointer;
+}
+
+.secondary-button {
+  background: #e7eff2;
+  color: var(--accent-strong);
 }
 
 button:disabled {
@@ -135,45 +151,8 @@ button:disabled {
 
 .status.error { color: var(--danger); }
 .status.success { color: var(--success); }
+.status.warning { color: var(--warning); }
 .status a { color: var(--accent-strong); font-weight: 750; }
-
-.details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 24px;
-}
-
-.details > div {
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 20px;
-}
-
-h2 {
-  margin-bottom: 8px;
-  font-size: 17px;
-}
-
-@media (max-width: 720px) {
-  .shell {
-    width: min(100% - 20px, 980px);
-    padding: 18px 0;
-  }
-
-  .brand { align-items: flex-start; }
-
-  .mark {
-    width: 48px;
-    height: 48px;
-    font-size: 23px;
-  }
-
-  .details { grid-template-columns: 1fr; }
-
-  button { width: 100%; }
-}
 
 .progress-wrap {
   margin-top: 18px;
@@ -224,9 +203,115 @@ h2 {
   animation: progress-stripes 900ms linear infinite;
 }
 
-@keyframes progress-stripes {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 36px 0, 0 0; }
+.results-panel {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.results-head h2 {
+  margin-bottom: 4px;
+}
+
+.download-all {
+  min-width: 160px;
+  background: var(--accent-strong);
+}
+
+.results-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.result-info {
+  min-width: 0;
+}
+
+.result-info h3 {
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.result-info p {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.result-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.result-controls input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #b9c8cf;
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.failures-list {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #f3c4bd;
+  border-radius: 8px;
+  background: #fff7f5;
+}
+
+.failures-list:empty {
+  display: none;
+}
+
+.failures-list h3 {
+  margin-bottom: 8px;
+  color: var(--danger);
+  font-size: 15px;
+}
+
+.failures-list p + p {
+  margin-top: 6px;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.details > div {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+h2 {
+  margin-bottom: 8px;
+  font-size: 17px;
 }
 
 .credit {
@@ -244,4 +329,43 @@ h2 {
 
 .credit a:hover {
   text-decoration: underline;
+}
+
+@keyframes progress-stripes {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 36px 0, 0 0; }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: min(100% - 20px, 1040px);
+    padding: 18px 0;
+  }
+
+  .brand {
+    align-items: flex-start;
+  }
+
+  .mark {
+    width: 48px;
+    height: 48px;
+    font-size: 23px;
+  }
+
+  .actions, .results-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  button, .download-all {
+    width: 100%;
+  }
+
+  .result-item, .result-controls, .details {
+    grid-template-columns: 1fr;
+  }
+
+  .download-button {
+    width: 100%;
+  }
 }

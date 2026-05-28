@@ -4,56 +4,80 @@ const fileName = document.querySelector('#fileName');
 const statusBox = document.querySelector('#status');
 const health = document.querySelector('#health');
 const button = document.querySelector('#convertButton');
+const clearButton = document.querySelector('#clearButton');
 const progressWrap = document.querySelector('#progressWrap');
 const progressLabel = document.querySelector('#progressLabel');
 const progressPercent = document.querySelector('#progressPercent');
 const progressBar = document.querySelector('#progressBar');
+const resultsPanel = document.querySelector('#resultsPanel');
+const resultsSummary = document.querySelector('#resultsSummary');
+const resultsList = document.querySelector('#resultsList');
+const failuresList = document.querySelector('#failuresList');
+const zipDownload = document.querySelector('#zipDownload');
 
 fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0];
-  fileName.textContent = file ? `${file.name} (${formatBytes(file.size)})` : 'Default maximum size: 80 MB';
+  const files = getSelectedFiles();
+  fileName.textContent = formatSelection(files);
   resetProgress();
   setStatus('', '');
+  clearResults();
+});
+
+clearButton.addEventListener('click', () => {
+  fileInput.value = '';
+  fileName.textContent = 'Default maximum upload size: 80 MB total';
+  resetProgress();
+  setStatus('', '');
+  clearResults();
 });
 
 form.addEventListener('submit', event => {
   event.preventDefault();
-  const file = fileInput.files?.[0];
+  const files = getSelectedFiles();
 
-  if (!file) {
-    setStatus('Choose a file before converting.', 'error');
+  if (files.length === 0) {
+    setStatus('Choose at least one file before converting.', 'error');
     return;
   }
 
-  convertFile(file);
+  convertFiles(files);
 });
 
-function convertFile(file) {
+function convertFiles(files) {
   button.disabled = true;
+  clearButton.disabled = true;
   progressWrap.hidden = false;
-  setProgress(0, 'Preparing file...');
-  setStatus('Keep this window open while the conversion finishes.', '');
+  setProgress(0, 'Preparing files...');
+  setStatus(`Converting ${files.length} file${files.length === 1 ? '' : 's'}. Keep this window open.`, '');
+  clearResults();
 
   const data = new FormData();
-  data.append('file', file);
+  for (const file of files) {
+    data.append('file', file);
+  }
 
   const request = new XMLHttpRequest();
   request.open('POST', '/api/convert');
   request.responseType = 'json';
-  request.timeout = 240000;
+  request.timeout = Math.max(240000, files.length * 180000 + 60000);
 
   request.upload.addEventListener('progress', event => {
     if (!event.lengthComputable) {
-      setProgress(12, 'Uploading file...');
+      setProgress(12, 'Uploading files...');
       return;
     }
 
-    const uploadPercent = Math.round((event.loaded / event.total) * 70);
-    setProgress(Math.max(4, uploadPercent), 'Uploading file...');
+    const uploadPercent = Math.round((event.loaded / event.total) * 55);
+    setProgress(Math.max(4, uploadPercent), 'Uploading files...');
   });
 
   request.addEventListener('loadstart', () => {
-    setProgress(3, 'Starting conversion...');
+    setProgress(3, 'Starting batch conversion...');
+  });
+
+  request.upload.addEventListener('load', () => {
+    setProgress(65, 'Files received. Calibre is converting them one by one...');
+    progressBar.classList.add('is-working');
   });
 
   request.addEventListener('load', () => {
@@ -61,20 +85,20 @@ function convertFile(file) {
 
     if (request.status < 200 || request.status >= 300) {
       const message = payload?.error || `Conversion failed with HTTP status ${request.status}.`;
-      finishWithError(message);
+      finishWithError(message, payload);
       return;
     }
 
-    if (!payload?.downloadUrl || !payload?.filename) {
-      finishWithError('The server finished the conversion but did not return a valid download link.');
+    if (!Array.isArray(payload?.files) || payload.files.length === 0) {
+      finishWithError('The server finished, but no converted files were returned.', payload);
       return;
     }
 
-    setProgress(100, 'Conversion finished. Downloading MOBI...');
-    statusBox.className = 'status success';
-    statusBox.innerHTML = `Conversion ready. If the download does not start, use this link: <a href="${payload.downloadUrl}" download="${payload.filename}">${payload.filename}</a>`;
-    startDownload(payload.downloadUrl, payload.filename);
+    setProgress(100, 'Batch conversion finished.');
+    renderResults(payload);
+    setStatus(`Converted ${payload.files.length} of ${files.length} file${files.length === 1 ? '' : 's'}.`, payload.failures?.length ? 'warning' : 'success');
     button.disabled = false;
+    clearButton.disabled = false;
   });
 
   request.addEventListener('loadend', () => {
@@ -88,12 +112,7 @@ function convertFile(file) {
   });
 
   request.addEventListener('timeout', () => {
-    finishWithError('The conversion took too long and was cancelled by the browser.');
-  });
-
-  request.upload.addEventListener('load', () => {
-    setProgress(75, 'File received. Calibre is converting it to MOBI...');
-    progressBar.classList.add('is-working');
+    finishWithError('The conversion took too long and was cancelled by the browser. Try fewer files or increase server timeout settings.');
   });
 
   request.send(data);
@@ -111,21 +130,102 @@ async function loadHealth() {
   }
 }
 
-function startDownload(downloadUrl, filename) {
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = filename;
-  link.rel = 'noopener';
-  document.body.append(link);
-  link.click();
-  link.remove();
+function renderResults(payload) {
+  resultsPanel.hidden = false;
+  resultsSummary.textContent = `${payload.files.length} file${payload.files.length === 1 ? '' : 's'} ready for download.`;
+  resultsList.innerHTML = '';
+  failuresList.innerHTML = '';
+
+  if (payload.zip?.downloadUrl) {
+    zipDownload.hidden = false;
+    zipDownload.href = payload.zip.downloadUrl;
+    zipDownload.download = payload.zip.filename;
+    zipDownload.textContent = `Download ZIP (${formatBytes(payload.zip.size)})`;
+  } else {
+    zipDownload.hidden = true;
+  }
+
+  for (const file of payload.files) {
+    resultsList.append(createResultItem(file));
+  }
+
+  if (Array.isArray(payload.failures) && payload.failures.length > 0) {
+    const title = document.createElement('h3');
+    title.textContent = 'Files not converted';
+    failuresList.append(title);
+
+    for (const failure of payload.failures) {
+      const item = document.createElement('p');
+      item.textContent = `${failure.originalName}: ${failure.error}`;
+      failuresList.append(item);
+    }
+  }
 }
 
-function finishWithError(message) {
+function createResultItem(file) {
+  const item = document.createElement('article');
+  item.className = 'result-item';
+
+  const info = document.createElement('div');
+  info.className = 'result-info';
+
+  const title = document.createElement('h3');
+  title.textContent = file.originalName;
+
+  const meta = document.createElement('p');
+  meta.textContent = `${file.filename} · ${formatBytes(file.size)}`;
+
+  info.append(title, meta);
+
+  const controls = document.createElement('div');
+  controls.className = 'result-controls';
+
+  const rename = document.createElement('input');
+  rename.type = 'text';
+  rename.value = file.suggestedName || file.filename;
+  rename.ariaLabel = `Download name for ${file.originalName}`;
+
+  const download = document.createElement('a');
+  download.className = 'download-button';
+  download.textContent = 'Download';
+  download.href = buildDownloadUrl(file.downloadUrl, rename.value);
+  download.download = normalizeMobiName(rename.value);
+
+  rename.addEventListener('input', () => {
+    download.href = buildDownloadUrl(file.downloadUrl, rename.value);
+    download.download = normalizeMobiName(rename.value);
+  });
+
+  controls.append(rename, download);
+  item.append(info, controls);
+  return item;
+}
+
+function buildDownloadUrl(downloadUrl, name) {
+  const safeName = normalizeMobiName(name);
+  return `${downloadUrl}?name=${encodeURIComponent(safeName)}`;
+}
+
+function normalizeMobiName(value) {
+  const fallback = 'converted-book.mobi';
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ');
+
+  if (!cleaned) return fallback;
+  return cleaned.toLowerCase().endsWith('.mobi') ? cleaned : `${cleaned}.mobi`;
+}
+
+function finishWithError(message, payload = null) {
   progressBar.classList.remove('is-working');
   setProgress(100, 'Conversion stopped.');
   setStatus(message, 'error');
+  if (payload?.failures?.length) {
+    renderResults({ files: payload.files || [], failures: payload.failures, zip: null });
+  }
   button.disabled = false;
+  clearButton.disabled = false;
 }
 
 function setStatus(message, type) {
@@ -147,7 +247,26 @@ function setProgress(percent, label) {
 function resetProgress() {
   progressWrap.hidden = true;
   progressBar.classList.remove('is-working');
-  setProgress(0, 'Preparing file...');
+  setProgress(0, 'Preparing files...');
+}
+
+function clearResults() {
+  resultsPanel.hidden = true;
+  resultsList.innerHTML = '';
+  failuresList.innerHTML = '';
+  zipDownload.hidden = true;
+}
+
+function getSelectedFiles() {
+  return Array.from(fileInput.files || []);
+}
+
+function formatSelection(files) {
+  if (files.length === 0) return 'Default maximum upload size: 80 MB total';
+  if (files.length === 1) return `${files[0].name} (${formatBytes(files[0].size)})`;
+
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  return `${files.length} files selected (${formatBytes(totalSize)} total)`;
 }
 
 function formatBytes(bytes) {

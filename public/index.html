@@ -13,23 +13,26 @@
           <div class="mark">M</div>
           <div>
             <h1>Kindle MOBI Converter</h1>
-            <p>Convert PDF, EPUB, DOCX, TXT, HTML, RTF or AZW3 files to MOBI for Kindle devices.</p>
+            <p>Convert one or many PDF, EPUB, DOCX, TXT, HTML, RTF or AZW3 files to MOBI for Kindle devices.</p>
           </div>
         </div>
 
         <form id="convertForm" class="uploader">
           <label class="dropzone" for="fileInput">
-            <input id="fileInput" name="file" type="file" accept=".pdf,.epub,.docx,.txt,.html,.htm,.rtf,.azw3">
-            <span class="dropzone-title">Choose a file</span>
-            <span id="fileName" class="dropzone-detail">Default maximum size: 80 MB</span>
+            <input id="fileInput" name="file" type="file" accept=".pdf,.epub,.docx,.txt,.html,.htm,.rtf,.azw3" multiple>
+            <span class="dropzone-title">Choose files</span>
+            <span id="fileName" class="dropzone-detail">Default maximum upload size: 80 MB total</span>
           </label>
 
-          <button id="convertButton" type="submit">Convert to MOBI</button>
+          <div class="actions">
+            <button id="convertButton" type="submit">Convert to MOBI</button>
+            <button id="clearButton" type="button" class="secondary-button">Clear</button>
+          </div>
         </form>
 
         <div id="progressWrap" class="progress-wrap" hidden>
           <div class="progress-head">
-            <span id="progressLabel">Preparing file...</span>
+            <span id="progressLabel">Preparing files...</span>
             <span id="progressPercent">0%</span>
           </div>
           <div class="progress-track" aria-hidden="true">
@@ -38,6 +41,18 @@
         </div>
 
         <div id="status" class="status" aria-live="polite"></div>
+
+        <section id="resultsPanel" class="results-panel" hidden>
+          <div class="results-head">
+            <div>
+              <h2>Converted Files</h2>
+              <p id="resultsSummary">No files converted yet.</p>
+            </div>
+            <a id="zipDownload" class="download-all" href="#" hidden>Download ZIP</a>
+          </div>
+          <div id="resultsList" class="results-list"></div>
+          <div id="failuresList" class="failures-list"></div>
+        </section>
       </section>
 
       <section class="details">

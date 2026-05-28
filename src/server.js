@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -24,7 +24,8 @@ const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.mobi': 'application/x-mobipocket-ebook'
+  '.mobi': 'application/x-mobipocket-ebook',
+  '.zip': 'application/zip'
 };
 
 const server = createServer(async (req, res) => {
@@ -40,7 +41,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/downloads/')) {
-      return handleDownload(url.pathname, res);
+      return handleDownload(url, res);
     }
 
     if (req.method === 'GET') {
@@ -71,39 +72,82 @@ async function handleConvert(req, res) {
 
   const body = await readRequestBody(req, maxUploadBytes);
   const boundary = getBoundary(req);
-  const file = parseSingleFile(body, boundary);
+  const uploadedFiles = parseFiles(body, boundary);
 
-  if (!file) {
-    return sendJson(res, 400, { error: 'No file was received.' });
+  if (uploadedFiles.length === 0) {
+    return sendJson(res, 400, { error: 'No files were received.' });
   }
 
-  const originalExt = extname(file.filename).toLowerCase();
-  if (!allowedExtensions.has(originalExt)) {
-    return sendJson(res, 400, { error: `Unsupported format: ${originalExt || 'no extension'}.` });
+  const results = [];
+  const failures = [];
+  const inputPaths = [];
+  const batchId = randomUUID();
+
+  for (const [index, file] of uploadedFiles.entries()) {
+    const originalExt = extname(file.filename).toLowerCase();
+    if (!allowedExtensions.has(originalExt)) {
+      failures.push({ originalName: file.filename, error: `Unsupported format: ${originalExt || 'no extension'}.` });
+      continue;
+    }
+
+    const itemId = randomUUID();
+    const safeBaseName = sanitizeBaseName(file.filename.replace(/\.[^.]+$/, '')) || `document-${index + 1}`;
+    const inputPath = join(uploadDir, `${itemId}${originalExt}`);
+    const outputFilename = `${safeBaseName}-${itemId.slice(0, 8)}.mobi`;
+    const outputPath = join(outputDir, outputFilename);
+
+    inputPaths.push(inputPath);
+    await writeFile(inputPath, file.content);
+
+    try {
+      const result = await convertToMobi(inputPath, outputPath);
+      results.push({
+        originalName: file.filename,
+        filename: outputFilename,
+        suggestedName: `${safeBaseName}.mobi`,
+        size: (await stat(outputPath)).size,
+        downloadUrl: `/downloads/${encodeURIComponent(outputFilename)}`,
+        log: result.stderr.slice(-2000)
+      });
+    } catch (error) {
+      await rm(outputPath, { force: true }).catch(() => {});
+      failures.push({ originalName: file.filename, error: error.message });
+    }
   }
 
-  const jobId = randomUUID();
-  const safeBaseName = sanitizeBaseName(file.filename.replace(/\.[^.]+$/, '')) || 'documento';
-  const inputPath = join(uploadDir, `${jobId}${originalExt}`);
-  const outputFilename = `${safeBaseName}-${jobId.slice(0, 8)}.mobi`;
-  const outputPath = join(outputDir, outputFilename);
+  await Promise.all(inputPaths.map(path => rm(path, { force: true }).catch(() => {})));
 
-  await writeFile(inputPath, file.content);
-
-  try {
-    const result = await convertToMobi(inputPath, outputPath);
-    sendJson(res, 200, {
-      ok: true,
-      filename: outputFilename,
-      downloadUrl: `/downloads/${encodeURIComponent(outputFilename)}`,
-      log: result.stderr.slice(-4000)
+  if (results.length === 0) {
+    return sendJson(res, 422, {
+      ok: false,
+      error: 'No files could be converted.',
+      files: [],
+      failures
     });
-  } catch (error) {
-    await rm(outputPath, { force: true }).catch(() => {});
-    sendJson(res, 422, { error: error.message });
-  } finally {
-    await rm(inputPath, { force: true }).catch(() => {});
   }
+
+  let zip = null;
+  if (results.length > 1) {
+    const zipFilename = `mobi-conversions-${batchId.slice(0, 8)}.zip`;
+    const zipPath = join(outputDir, zipFilename);
+    try {
+      await createZip(zipPath, results.map(file => ({ path: join(outputDir, file.filename), name: file.filename })));
+      zip = {
+        filename: zipFilename,
+        downloadUrl: `/downloads/${encodeURIComponent(zipFilename)}`,
+        size: (await stat(zipPath)).size
+      };
+    } catch (error) {
+      failures.push({ originalName: 'ZIP archive', error: error.message });
+    }
+  }
+
+  sendJson(res, 200, {
+    ok: true,
+    files: results,
+    failures,
+    zip
+  });
 }
 
 function convertToMobi(inputPath, outputPath) {
@@ -139,9 +183,97 @@ function convertToMobi(inputPath, outputPath) {
   });
 }
 
-function parseSingleFile(body, boundary) {
+async function createZip(zipPath, entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const data = await readFile(entry.path);
+    const name = Buffer.from(entry.name, 'utf8');
+    const crc = crc32(data);
+    const { date, time } = getDosDateTime(new Date());
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0x0800, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(time, 10);
+    localHeader.writeUInt16LE(date, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, name, data);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0x0800, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(time, 12);
+    centralHeader.writeUInt16LE(date, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralParts.push(centralHeader, name);
+    offset += localHeader.length + name.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const endHeader = Buffer.alloc(22);
+  endHeader.writeUInt32LE(0x06054b50, 0);
+  endHeader.writeUInt16LE(0, 4);
+  endHeader.writeUInt16LE(0, 6);
+  endHeader.writeUInt16LE(entries.length, 8);
+  endHeader.writeUInt16LE(entries.length, 10);
+  endHeader.writeUInt32LE(centralSize, 12);
+  endHeader.writeUInt32LE(offset, 16);
+  endHeader.writeUInt16LE(0, 20);
+
+  await writeFile(zipPath, Buffer.concat([...localParts, ...centralParts, endHeader]));
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const crcTable = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function getDosDateTime(date) {
+  const year = Math.max(1980, date.getFullYear());
+  return {
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
+  };
+}
+
+function parseFiles(body, boundary) {
   const delimiter = Buffer.from(`--${boundary}`);
   const parts = splitBuffer(body, delimiter);
+  const files = [];
 
   for (const part of parts) {
     const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'));
@@ -155,11 +287,12 @@ function parseSingleFile(body, boundary) {
     let content = part.subarray(headerEnd + 4);
     if (content.subarray(0, 2).toString() === '\r\n') content = content.subarray(2);
     if (content.subarray(-2).toString() === '\r\n') content = content.subarray(0, -2);
+    if (content.length === 0) continue;
 
-    return { filename: filenameMatch[1], content };
+    files.push({ filename: filenameMatch[1], content });
   }
 
-  return null;
+  return files;
 }
 
 function splitBuffer(buffer, delimiter) {
@@ -186,7 +319,7 @@ function readRequestBody(req, maxBytes) {
       total += chunk.length;
       if (total > maxBytes) {
         req.destroy();
-        reject(new Error(`El archivo supera el limite de ${Math.round(maxBytes / 1024 / 1024)} MB.`));
+        reject(new Error(`The upload exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`));
         return;
       }
       chunks.push(chunk);
@@ -225,12 +358,13 @@ async function serveStatic(pathname, res) {
   createReadStream(filePath).pipe(res);
 }
 
-async function handleDownload(pathname, res) {
-  const filename = decodeURIComponent(pathname.replace('/downloads/', ''));
+async function handleDownload(url, res) {
+  const filename = decodeURIComponent(url.pathname.replace('/downloads/', ''));
   const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '');
   const filePath = normalize(join(outputDir, safeFilename));
+  const extension = extname(safeFilename).toLowerCase();
 
-  if (!filePath.startsWith(outputDir) || !safeFilename.endsWith('.mobi')) {
+  if (!filePath.startsWith(outputDir) || !['.mobi', '.zip'].includes(extension)) {
     return sendText(res, 403, 'Access denied.');
   }
 
@@ -239,10 +373,12 @@ async function handleDownload(pathname, res) {
     return sendText(res, 404, 'File not found.');
   }
 
+  const customName = sanitizeDownloadName(url.searchParams.get('name') || safeFilename, extension);
+
   res.writeHead(200, {
-    'Content-Type': 'application/x-mobipocket-ebook',
+    'Content-Type': mimeTypes[extension] || 'application/octet-stream',
     'Content-Length': fileStats.size,
-    'Content-Disposition': `attachment; filename="${safeFilename}"`
+    'Content-Disposition': `attachment; filename="${customName}"`
   });
   createReadStream(filePath).pipe(res);
 }
@@ -264,6 +400,11 @@ function sanitizeBaseName(value) {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
+}
+
+function sanitizeDownloadName(value, extension) {
+  const base = sanitizeBaseName(value.replace(/\.[^.]+$/, '')) || 'download';
+  return `${base}${extension}`;
 }
 
 function hasEbookConvert() {
