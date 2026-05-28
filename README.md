@@ -132,7 +132,7 @@ Environment variables:
 | Variable | Default | Description |
 | --- | ---: | --- |
 | `PORT` | `3000` | HTTP server port. |
-| `MAX_UPLOAD_MB` | `80` | Maximum upload size in megabytes. |
+| `MAX_UPLOAD_MB` | `250` | Maximum upload size in megabytes. |
 | `CONVERSION_TIMEOUT_MS` | `180000` | Maximum conversion time per file. |
 
 Example:

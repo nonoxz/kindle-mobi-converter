@@ -35,7 +35,7 @@ fileInput.addEventListener('change', () => {
 
 clearButton.addEventListener('click', () => {
   fileInput.value = '';
-  fileName.textContent = 'Default maximum upload size: 80 MB total';
+  fileName.textContent = 'Default maximum upload size: 250 MB total';
   resetProgress();
   setStatus('', '');
   clearResults();
@@ -346,7 +346,7 @@ function totalSize(files) {
 }
 
 function formatSelection(files) {
-  if (files.length === 0) return 'Default maximum upload size: 80 MB total';
+  if (files.length === 0) return 'Default maximum upload size: 250 MB total';
   if (files.length === 1) return `${files[0].name} (${formatBytes(files[0].size)})`;
 
   return `${files.length} files selected (${formatBytes(totalSize(files))} total)`;

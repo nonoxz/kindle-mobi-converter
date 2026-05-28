@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-05-28
+
+### Fixed
+
+- Increased the default batch upload limit from 80 MB to 250 MB.
+- Added explicit HTTP 413 JSON responses when uploads exceed `MAX_UPLOAD_MB`, avoiding a misleading browser connection error.
+
 ## [0.3.0] - 2026-05-28
 
 ### Added

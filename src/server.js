@@ -12,7 +12,9 @@ const uploadDir = join(rootDir, 'storage', 'uploads');
 const outputDir = join(rootDir, 'storage', 'outputs');
 
 const port = Number(process.env.PORT || 3000);
-const maxUploadBytes = Number(process.env.MAX_UPLOAD_MB || 80) * 1024 * 1024;
+const defaultMaxUploadMB = 250;
+const maxUploadMB = Number(process.env.MAX_UPLOAD_MB || defaultMaxUploadMB);
+const maxUploadBytes = maxUploadMB * 1024 * 1024;
 const conversionTimeoutMs = Number(process.env.CONVERSION_TIMEOUT_MS || 180000);
 const allowedExtensions = new Set(['.pdf', '.epub', '.docx', '.txt', '.html', '.htm', '.rtf', '.azw3']);
 
@@ -70,7 +72,22 @@ async function handleConvert(req, res) {
     });
   }
 
-  const body = await readRequestBody(req, maxUploadBytes);
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > maxUploadBytes) {
+    return sendJson(res, 413, {
+      error: `The upload is ${formatBytes(contentLength)}, which exceeds the ${maxUploadMB} MB limit. Select fewer files or increase MAX_UPLOAD_MB.`
+    });
+  }
+
+  let body;
+  try {
+    body = await readRequestBody(req, maxUploadBytes, maxUploadMB);
+  } catch (error) {
+    if (error instanceof UploadLimitError) {
+      return sendJson(res, 413, { error: error.message });
+    }
+    throw error;
+  }
   const boundary = getBoundary(req);
   const uploadedFiles = parseFiles(body, boundary);
 
@@ -310,25 +327,34 @@ function splitBuffer(buffer, delimiter) {
   return parts;
 }
 
-function readRequestBody(req, maxBytes) {
+function readRequestBody(req, maxBytes, maxMB) {
   return new Promise((resolvePromise, reject) => {
-    const chunks = [];
+    let chunks = [];
     let total = 0;
+    let exceeded = false;
 
     req.on('data', chunk => {
+      if (exceeded) return;
+
       total += chunk.length;
       if (total > maxBytes) {
-        req.destroy();
-        reject(new Error(`The upload exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`));
+        exceeded = true;
+        chunks = [];
+        reject(new UploadLimitError(`The upload exceeds the ${maxMB} MB limit. Select fewer files or increase MAX_UPLOAD_MB.`));
         return;
       }
+
       chunks.push(chunk);
     });
 
-    req.on('end', () => resolvePromise(Buffer.concat(chunks)));
+    req.on('end', () => {
+      if (!exceeded) resolvePromise(Buffer.concat(chunks));
+    });
     req.on('error', reject);
   });
 }
+
+class UploadLimitError extends Error {}
 
 function isMultipart(req) {
   return String(req.headers['content-type'] || '').includes('multipart/form-data');
@@ -391,6 +417,20 @@ function sendJson(res, statusCode, payload) {
 function sendText(res, statusCode, text) {
   res.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end(text);
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = units.shift();
+
+  while (value >= 1024 && units.length) {
+    value /= 1024;
+    unit = units.shift();
+  }
+
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }
 
 function sanitizeBaseName(value) {
