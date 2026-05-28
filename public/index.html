@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kindle MOBI Converter</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="brand">
+          <div class="mark">M</div>
+          <div>
+            <h1>Kindle MOBI Converter</h1>
+            <p>Convert PDF, EPUB, DOCX, TXT, HTML, RTF or AZW3 files to MOBI for Kindle devices.</p>
+          </div>
+        </div>
+
+        <form id="convertForm" class="uploader">
+          <label class="dropzone" for="fileInput">
+            <input id="fileInput" name="file" type="file" accept=".pdf,.epub,.docx,.txt,.html,.htm,.rtf,.azw3">
+            <span class="dropzone-title">Choose a file</span>
+            <span id="fileName" class="dropzone-detail">Default maximum size: 80 MB</span>
+          </label>
+
+          <button id="convertButton" type="submit">Convert to MOBI</button>
+        </form>
+
+        <div id="progressWrap" class="progress-wrap" hidden>
+          <div class="progress-head">
+            <span id="progressLabel">Preparing file...</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+
+        <div id="status" class="status" aria-live="polite"></div>
+      </section>
+
+      <section class="details">
+        <div>
+          <h2>Converter Status</h2>
+          <p id="health">Checking Calibre...</p>
+        </div>
+        <div>
+          <h2>Best Results</h2>
+          <p>Use EPUB or DOCX whenever possible. PDF files may keep rigid layouts and line breaks after conversion.</p>
+        </div>
+      </section>
+
+      <footer class="credit">
+        Built by <a href="https://github.com/nonoxz" target="_blank" rel="noopener noreferrer">nonoxz</a>.
+      </footer>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
